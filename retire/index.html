@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Retirement Monte Carlo Engine</title>
+    <meta name="description" content="Calculate your true retirement age using an industry-standard 80% Monte Carlo confidence interval.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="background-blob blob-1"></div>
+    <div class="background-blob blob-2"></div>
+    
+    <div class="container">
+        <header>
+            <h1>The Confidence Zone</h1>
+            <p>Industry-Standard Monte Carlo Simulator (80% Success Rate)</p>
+        </header>
+
+        <main>
+            <form id="calc-form">
+                <div class="input-group">
+                    <label for="currentAge">Current Age</label>
+                    <input type="number" id="currentAge" placeholder="e.g. 43" required min="20" max="80">
+                </div>
+                
+                <div class="input-group">
+                    <label for="portfolio">Current Portfolio ($)</label>
+                    <input type="number" id="portfolio" placeholder="e.g. 1500000" required min="0">
+                </div>
+                
+                <div class="input-group">
+                    <label for="annualSavings">Annual Savings ($/yr)</label>
+                    <input type="number" id="annualSavings" placeholder="e.g. 25000" required min="0">
+                </div>
+                
+                <div class="input-group">
+                    <label for="targetSpend">Target Retirement Spend ($/yr)</label>
+                    <input type="number" id="targetSpend" placeholder="e.g. 140000" required min="0">
+                </div>
+
+                <button type="submit" id="submit-btn">
+                    <span class="btn-text">Run 5,000 Simulations</span>
+                    <div class="loader" id="btn-loader"></div>
+                </button>
+            </form>
+
+            <div id="results-container" class="hidden">
+                <h2>Your Safe Retirement Age</h2>
+                <p class="subtitle">Based on 15% S&P 500 Volatility</p>
+                <div class="table-wrapper">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Real Return</th>
+                                <th>Earliest Age</th>
+                            </tr>
+                        </thead>
+                        <tbody id="results-body">
+                            <!-- Results injected by JS -->
+                        </tbody>
+                    </table>
+                </div>
+                <div class="disclaimer">
+                    * Assumes an industry-standard 80% Monte Carlo success rate.<br>
+                    * Assumes ~15% effective tax rate in retirement.<br>
+                    * Excludes Social Security for an added margin of safety.
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
