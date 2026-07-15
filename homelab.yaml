@@ -1,0 +1,32 @@
+schema: homelab.project/v1
+project:
+  id: khamel83-github-io
+  name: Khamel83 Github Io
+  repository: https://github.com/Khamel83/khamel83.github.io
+  kind: service
+  lifecycle: development
+  owner: homelab
+monitoring:
+  state: standby
+runtime:
+  production:
+    host: unknown
+    managed_by: unknown
+    unit: khamel83-github-io
+health:
+  source: homelab-api
+  checks: []
+observability:
+  event_sink: homelab-api:/observations
+  evidence_policy: sanitized
+dependencies:
+  required: []
+  optional: []
+secrets:
+  broker_consumer: khamel83-github-io
+  references: []
+operations:
+  repair_ids: []
+docs:
+  index: README.md
+  operations: docs/OPERATIONS.md
