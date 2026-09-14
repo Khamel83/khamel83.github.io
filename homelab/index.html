@@ -1,0 +1,400 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>Homelab machine topology and OCI inventory</title>
+  <style>
+    :root {
+      --ink: #17202a;
+      --muted: #5f6b76;
+      --paper: #f6f7f9;
+      --card: #ffffff;
+      --line: #d8dee6;
+      --owned: #1f6f5b;
+      --external: #9b5d16;
+      --future: #6d5a9e;
+      --public: #b65b1b;
+      --private: #2769a8;
+      --deploy: #2d7a55;
+      --data: #7754a6;
+      --risk: #a54141;
+      --shadow: 0 14px 34px rgba(23, 32, 42, 0.08);
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: var(--paper);
+      font: 16px/1.55 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    a { color: #155b99; }
+    .shell { max-width: 1280px; margin: 0 auto; padding: 28px 22px 72px; }
+    .eyebrow { color: var(--muted); font-size: 0.76rem; font-weight: 750; letter-spacing: 0.14em; text-transform: uppercase; }
+    h1, h2, h3 { line-height: 1.15; }
+    h1 { max-width: 760px; margin: 8px 0 12px; font-size: clamp(2.2rem, 5vw, 4.6rem); letter-spacing: -0.055em; }
+    h2 { margin: 0 0 12px; font-size: clamp(1.45rem, 2.5vw, 2.2rem); letter-spacing: -0.03em; }
+    h3 { margin: 0 0 7px; font-size: 1.05rem; }
+    p { margin: 0 0 12px; }
+    .lede { max-width: 780px; color: var(--muted); font-size: 1.1rem; }
+    .meta { display: flex; flex-wrap: wrap; gap: 8px; margin: 22px 0 26px; }
+    .pill, .tag {
+      display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line);
+      border-radius: 999px; padding: 5px 10px; background: var(--card); color: var(--muted);
+      font-size: 0.82rem; font-weight: 700;
+    }
+    .pill::before, .tag::before { width: 8px; height: 8px; border-radius: 50%; background: currentColor; content: ""; }
+    .pill.observed, .tag.observed { color: #286a57; }
+    .pill.candidate, .tag.classify { color: var(--external); }
+    .pill.future, .tag.future { color: var(--future); }
+    .tag.keep { color: var(--owned); }
+    .tag.move { color: #2b6fa1; }
+    .tag.retire { color: var(--risk); }
+    .notice {
+      margin: 0 0 30px; border-left: 5px solid var(--risk); border-radius: 12px;
+      padding: 15px 18px; background: #fff4f1; box-shadow: var(--shadow);
+    }
+    .section { margin-top: 48px; }
+    .section-head { display: flex; align-items: end; justify-content: space-between; gap: 18px; margin-bottom: 16px; }
+    .section-head p { max-width: 700px; color: var(--muted); }
+    .panel { border: 1px solid var(--line); border-radius: 18px; background: var(--card); box-shadow: var(--shadow); }
+
+    .topology-wrap { overflow: hidden; padding: 8px; }
+    .topology { display: block; width: 100%; min-width: 760px; }
+    .topology text { fill: var(--ink); font-family: system-ui, sans-serif; }
+    .topology .label { fill: var(--muted); font-size: 13px; font-weight: 750; letter-spacing: 0.08em; text-transform: uppercase; }
+    .topology .node-title { font-size: 16px; font-weight: 800; }
+    .topology .node-copy { fill: var(--muted); font-size: 12px; }
+    .topology .lane-title { font-size: 14px; font-weight: 800; }
+    .topology .lane-copy { fill: var(--muted); font-size: 12px; }
+    .topology .owned-boundary { fill: #edf7f2; stroke: var(--owned); stroke-width: 2; }
+    .topology .external-boundary { fill: #fff7ec; stroke: var(--external); stroke-width: 2; stroke-dasharray: 9 7; }
+    .topology .future-boundary { fill: #f5f1fb; stroke: var(--future); stroke-width: 2; stroke-dasharray: 6 7; }
+    .topology .mesh-boundary { fill: #eef4fb; stroke: var(--private); stroke-width: 2; stroke-dasharray: 4 6; }
+    .topology .node { fill: white; stroke: var(--line); stroke-width: 1.5; }
+    .topology .node.future-node { stroke: var(--future); stroke-dasharray: 6 5; }
+    .topology .arrow-public { stroke: var(--public); }
+    .topology .arrow-private { stroke: var(--private); }
+    .topology .arrow-deploy { stroke: var(--deploy); }
+    .topology .arrow-data { stroke: var(--data); }
+    .topology .arrow { fill: none; stroke-width: 3; marker-end: url(#arrow); }
+    .topology .dotted { stroke-dasharray: 6 6; }
+    .topology .warning { fill: #fff0ee; stroke: var(--risk); stroke-width: 1.5; }
+    .topology .warning-copy { fill: var(--risk); font-size: 12px; font-weight: 700; }
+    .figure-note { padding: 8px 14px 14px; color: var(--muted); font-size: 0.9rem; }
+
+    .legend { display: flex; flex-wrap: wrap; gap: 9px; margin: 16px 0; }
+    .legend-item { display: inline-flex; align-items: center; gap: 7px; color: var(--muted); font-size: 0.86rem; }
+    .legend-swatch { width: 18px; height: 12px; border: 2px solid currentColor; border-radius: 4px; }
+    .legend-swatch.external { color: var(--external); border-style: dashed; }
+    .legend-swatch.future { color: var(--future); border-style: dashed; }
+    .legend-swatch.owned { color: var(--owned); }
+
+    .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(235px, 1fr)); gap: 14px; }
+    .card { border: 1px solid var(--line); border-radius: 15px; padding: 17px; background: var(--card); }
+    .card.owned { border-top: 4px solid var(--owned); }
+    .card.external { border-top: 4px solid var(--external); }
+    .card.future { border: 2px dashed var(--future); background: #fbf9ff; }
+    .card.access { border-top: 4px solid #697585; }
+    .card .role { color: var(--muted); font-size: 0.9rem; }
+    .card .not { margin-top: 10px; color: var(--risk); font-size: 0.88rem; }
+    .card .not strong { color: var(--ink); }
+
+    .gate-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(270px, 0.7fr); gap: 18px; }
+    .gates { margin: 0; padding: 4px 0 4px 30px; }
+    .gates li { margin: 10px 0; padding-left: 6px; }
+    .gates strong { color: var(--ink); }
+    .gate-default { border-left: 4px solid var(--public); padding: 16px 18px; background: #fff8ef; border-radius: 12px; }
+    .gate-default code { font-weight: 750; }
+
+    .scenario-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 14px; }
+    .scenario-button, .filter-button {
+      cursor: pointer; border: 1px solid var(--line); border-radius: 999px; padding: 7px 12px;
+      background: var(--card); color: var(--muted); font: inherit; font-size: 0.86rem; font-weight: 750;
+    }
+    .scenario-button[aria-pressed="true"], .filter-button[aria-pressed="true"] { border-color: var(--ink); background: var(--ink); color: white; }
+    .scenario-output { min-height: 86px; border-radius: 14px; padding: 16px 18px; background: #eef4fb; }
+    .scenario-output strong { display: block; margin-bottom: 4px; }
+
+    .filter-bar { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0; }
+    .inventory-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(270px, 1fr)); gap: 13px; }
+    .inventory-item { display: flex; flex-direction: column; gap: 10px; border: 1px solid var(--line); border-radius: 14px; padding: 16px; background: var(--card); }
+    .inventory-item[hidden] { display: none; }
+    .inventory-top { display: flex; align-items: start; justify-content: space-between; gap: 10px; }
+    .inventory-top h3 { margin: 0; }
+    .inventory-item p { color: var(--muted); font-size: 0.92rem; }
+    .inventory-item .evidence { margin-top: auto; border-top: 1px solid var(--line); padding-top: 9px; color: var(--muted); font-size: 0.8rem; }
+    code { border-radius: 5px; padding: 1px 4px; background: #edf0f3; font: 0.9em ui-monospace, SFMono-Regular, Menlo, monospace; }
+
+    details { margin-top: 16px; border: 1px solid var(--line); border-radius: 14px; background: var(--card); }
+    summary { cursor: pointer; padding: 14px 16px; font-weight: 800; }
+    .repo-list { columns: 4 160px; margin: 0; padding: 0 24px 18px 36px; color: var(--muted); font-size: 0.88rem; }
+    .repo-list li { break-inside: avoid; margin: 4px 0; }
+
+    .next { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 13px; }
+    .next .card { background: #fbfcfd; }
+    .next .number { color: var(--public); font-size: 1.5rem; font-weight: 850; }
+    footer { margin-top: 48px; border-top: 1px solid var(--line); padding-top: 18px; color: var(--muted); font-size: 0.88rem; }
+    footer a { margin-right: 14px; }
+    @media (max-width: 760px) {
+      .shell { padding: 22px 14px 52px; }
+      .section-head { display: block; }
+      .gate-layout { grid-template-columns: 1fr; }
+      .topology-wrap { overflow-x: auto; }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <header>
+      <div class="eyebrow">Homelab / machine model / dated evidence</div>
+      <h1>One system, four connection planes, clear ownership.</h1>
+      <p class="lede">This map explains how development, production, public ingress, private access, deployment, and recovery fit together. It also shows what is actually on OCI today and what still needs a decision.</p>
+      <div class="meta" aria-label="artifact metadata">
+        <span class="pill observed">Snapshot: 2026-09-14 UTC</span>
+        <span class="pill candidate">OCI: observed mixed workload</span>
+        <span class="pill future">Ubuntu laptop: future optional node</span>
+      </div>
+    </header>
+
+    <aside class="notice" role="note">
+      <strong>Read this first:</strong> this is a dated inventory and design aid, not a live-health dashboard. Observed state is not approval. No OCI, Homelab, Cloudflare, Tailscale, eero, or laptop changes are made by this document.
+    </aside>
+
+    <section class="section" aria-labelledby="map-title">
+      <div class="section-head">
+        <div>
+          <div class="eyebrow">The whole system</div>
+          <h2 id="map-title">Independent paths, not a chain</h2>
+        </div>
+        <p>Cloudflare handles public ingress. Tailscale handles private connectivity. GitHub is the committed-code exchange boundary. Homelab is the durable recovery boundary.</p>
+      </div>
+      <figure class="panel topology-wrap">
+        <svg class="topology" viewBox="0 0 1200 650" role="img" aria-labelledby="topology-title topology-desc">
+          <title id="topology-title">Homelab machine and connection topology</title>
+          <desc id="topology-desc">Four separate lanes show public requests, private Tailscale access, deployment from the Mac mini through GitHub, and durable data recovery through Homelab.</desc>
+          <defs>
+            <marker id="arrow" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 Z" fill="#5f6b76"></path></marker>
+          </defs>
+
+          <text class="label" x="28" y="25">PUBLIC EDGE PLANE</text>
+          <text class="lane-copy" x="28" y="44">Internet request → Cloudflare → one declared origin</text>
+          <rect class="external-boundary" x="212" y="56" width="190" height="92" rx="14"></rect>
+          <text class="label" x="228" y="76">EXTERNAL</text>
+          <rect class="node" x="28" y="74" width="145" height="58" rx="11"></rect>
+          <text class="node-title" x="46" y="101">Internet</text>
+          <text class="node-copy" x="46" y="120">public request</text>
+          <rect class="node" x="232" y="87" width="150" height="48" rx="10"></rect>
+          <text class="node-title" x="249" y="110">Cloudflare</text>
+          <text class="node-copy" x="249" y="127">DNS · TLS · proxy</text>
+          <path class="arrow arrow-public" d="M174 103 H227" marker-end="url(#arrow)"></path>
+          <text class="label" x="455" y="76">ORIGIN OPTIONS / ONE ACTIVE</text>
+          <rect class="owned-boundary" x="455" y="87" width="112" height="48" rx="10"></rect>
+          <rect class="node" x="471" y="87" width="112" height="48" rx="10"></rect>
+          <text class="node-title" x="492" y="110">Homelab</text>
+          <text class="node-copy" x="492" y="127">production</text>
+          <rect class="external-boundary" x="595" y="87" width="116" height="48" rx="10"></rect>
+          <text class="node-title" x="620" y="110">OCI</text>
+          <text class="node-copy" x="608" y="127">eligible only</text>
+          <path class="arrow arrow-public" d="M383 111 H445" marker-end="url(#arrow)"></path>
+          <text class="warning-copy" x="746" y="105">one origin per hostname</text>
+          <text class="warning-copy" x="746" y="123">no automatic fallback chain</text>
+
+          <text class="label" x="28" y="178">PRIVATE MESH PLANE</text>
+          <text class="lane-copy" x="28" y="197">named nodes connect directly through Tailscale</text>
+          <rect class="mesh-boundary" x="208" y="211" width="594" height="105" rx="16"></rect>
+          <text class="label" x="228" y="233">PRIVATE MESH / NOT PUBLIC INGRESS</text>
+          <rect class="node" x="228" y="249" width="134" height="48" rx="10"></rect>
+          <text class="node-title" x="247" y="272">Mac mini</text>
+          <text class="node-copy" x="247" y="289">development</text>
+          <rect class="node" x="420" y="249" width="134" height="48" rx="10"></rect>
+          <text class="node-title" x="437" y="272">Homelab</text>
+          <text class="node-copy" x="437" y="289">owned runtime</text>
+          <rect class="external-boundary" x="612" y="249" width="134" height="48" rx="10"></rect>
+          <text class="node-title" x="657" y="272">OCI</text>
+          <text class="node-copy" x="631" y="289">external runtime</text>
+          <path class="arrow arrow-private dotted" d="M364 273 H414" marker-end="url(#arrow)"></path>
+          <path class="arrow arrow-private dotted" d="M556 273 H606" marker-end="url(#arrow)"></path>
+          <rect class="future-boundary" x="839" y="211" width="184" height="105" rx="16"></rect>
+          <text class="label" x="857" y="233">FUTURE / OPTIONAL</text>
+          <rect class="node future-node" x="859" y="249" width="145" height="48" rx="10"></rect>
+          <text class="node-title" x="877" y="272">Ubuntu laptop</text>
+          <text class="node-copy" x="877" y="289">closet · no UPS</text>
+          <path class="arrow arrow-private dotted" d="M802 273 H853" marker-end="url(#arrow)"></path>
+          <text class="node-copy" x="28" y="274">MBA: personal access</text>
+          <text class="node-copy" x="28" y="292">Work MBP: SSH/terminal only</text>
+
+          <text class="label" x="28" y="352">DEPLOYMENT PLANE</text>
+          <text class="lane-copy" x="28" y="371">committed code travels through GitHub to the selected host</text>
+          <rect class="node" x="28" y="391" width="170" height="58" rx="11"></rect>
+          <text class="node-title" x="50" y="416">Mac mini</text>
+          <text class="node-copy" x="50" y="435">develop · test · commit</text>
+          <rect class="external-boundary" x="315" y="391" width="170" height="58" rx="11"></rect>
+          <text class="node-title" x="379" y="416">GitHub</text>
+          <text class="node-copy" x="337" y="435">committed code</text>
+          <rect class="node" x="602" y="391" width="182" height="58" rx="11"></rect>
+          <text class="node-title" x="627" y="416">Selected host</text>
+          <text class="node-copy" x="627" y="435">Homelab or OCI</text>
+          <path class="arrow arrow-deploy" d="M201 420 H308" marker-end="url(#arrow)"></path>
+          <path class="arrow arrow-deploy" d="M488 420 H595" marker-end="url(#arrow)"></path>
+          <rect class="warning" x="829" y="391" width="320" height="58" rx="11"></rect>
+          <text class="warning-copy" x="850" y="416">Legacy broad repo sync is not deployment.</text>
+          <text class="warning-copy" x="850" y="435">Never stash, rebase, merge, or overwrite worktrees.</text>
+
+          <text class="label" x="28" y="484">DURABLE DATA / RECOVERY PLANE</text>
+          <text class="lane-copy" x="28" y="503">service state needs an owner, backup boundary, and verified restore path</text>
+          <rect class="node" x="28" y="523" width="202" height="58" rx="11"></rect>
+          <text class="node-title" x="49" y="548">Service state</text>
+          <text class="node-copy" x="49" y="567">Dada writes need a gate</text>
+          <rect class="owned-boundary" x="347" y="523" width="202" height="58" rx="11"></rect>
+          <text class="node-title" x="390" y="548">Homelab backup</text>
+          <text class="node-copy" x="390" y="567">owned recovery boundary</text>
+          <rect class="node" x="666" y="523" width="202" height="58" rx="11"></rect>
+          <text class="node-title" x="714" y="548">Verified restore</text>
+          <text class="node-copy" x="714" y="567">proof before cutover</text>
+          <path class="arrow arrow-data" d="M233 552 H340" marker-end="url(#arrow)"></path>
+          <path class="arrow arrow-data" d="M552 552 H659" marker-end="url(#arrow)"></path>
+          <text class="warning-copy" x="900" y="548">No “small data” exception</text>
+          <text class="warning-copy" x="900" y="567">for the durability gate.</text>
+        </svg>
+        <figcaption class="figure-note">Solid green = owned infrastructure. Dashed amber = external provider/runtime. Dashed purple = future optional hardware. Each colored arrow is a separate plane.</figcaption>
+      </figure>
+      <div class="legend" aria-label="trust boundary legend">
+        <span class="legend-item"><span class="legend-swatch owned"></span> owned infrastructure</span>
+        <span class="legend-item"><span class="legend-swatch external"></span> external provider/runtime</span>
+        <span class="legend-item"><span class="legend-swatch future"></span> future optional hardware</span>
+      </div>
+    </section>
+
+    <section class="section" aria-labelledby="roles-title">
+      <div class="section-head">
+        <div><div class="eyebrow">Ownership</div><h2 id="roles-title">What each point is for</h2></div>
+        <p>The role is a constraint. It is not a claim that every service currently obeys it.</p>
+      </div>
+      <div class="cards">
+        <article class="card owned"><h3>Homelab</h3><p class="role">Owned production and durable state.</p><p>Stateful/private Docker services, storage, backups, Homelab API, and diagnostics.</p><p class="not"><strong>Not:</strong> public edge policy or Mac mini worktrees.</p></article>
+        <article class="card external"><h3>OCI</h3><p class="role">External 24/7 runtime capacity.</p><p>Small public, stateless, loss-tolerant, unattended workloads that fit the 2 vCPU / 12 GB / 200 GB envelope.</p><p class="not"><strong>Not:</strong> durable-data authority or required control plane.</p></article>
+        <article class="card owned"><h3>Mac mini</h3><p class="role">Primary development host.</p><p>Interactive source work, tests, native macOS runtimes, and explicit previews.</p><p class="not"><strong>Not:</strong> automatic production fallback.</p></article>
+        <article class="card future"><h3>Ubuntu laptop</h3><p class="role">Future optional closet node.</p><p>Ethernet and power when possible; possible Pi-hole, monitoring, and low-risk workers after commissioning.</p><p class="not"><strong>Not:</strong> UPS, current dependency, or data authority.</p></article>
+        <article class="card external"><h3>Cloudflare</h3><p class="role">Public edge.</p><p>Public DNS, TLS, proxy/WAF, and reviewed tunnel routing to one declared origin.</p><p class="not"><strong>Not:</strong> private mesh membership or placement authority.</p></article>
+        <article class="card external"><h3>Tailscale</h3><p class="role">Private connection plane.</p><p>Encrypted operator access and explicit host-to-host paths between named nodes.</p><p class="not"><strong>Not:</strong> public Internet ingress.</p></article>
+        <article class="card access"><h3>MacBook Air</h3><p class="role">Personal access node.</p><p>Local operator tools and Tailscale access.</p><p class="not"><strong>Not:</strong> persistent production state.</p></article>
+        <article class="card access"><h3>Work MacBook Pro</h3><p class="role">Restricted access client.</p><p>Approved terminal/SSH access to other machines.</p><p class="not"><strong>Not:</strong> Tailscale, local runtimes, or persistent state.</p></article>
+      </div>
+    </section>
+
+    <section class="section" aria-labelledby="gates-title">
+      <div class="section-head">
+        <div><div class="eyebrow">Placement logic</div><h2 id="gates-title">Hard gates before convenience</h2></div>
+        <p>Use decisive gates first. Use softer trade-offs only after a workload passes the gate.</p>
+      </div>
+      <div class="gate-layout">
+        <div class="panel" style="padding: 18px 20px;">
+          <ol class="gates">
+            <li><strong>Durable, private, or storage-heavy?</strong> Put it on Homelab.</li>
+            <li><strong>Native macOS or interactive development?</strong> Keep it on the Mac mini.</li>
+            <li><strong>Public, stateless, loss-tolerant, and resource-fitting?</strong> OCI is eligible, pending route and recovery proof.</li>
+            <li><strong>Future laptop?</strong> It is ineligible until commissioned with verified boot, network, Tailscale/SSH, and remote recovery.</li>
+            <li><strong>No decisive match?</strong> Default to Homelab or classify first.</li>
+          </ol>
+        </div>
+        <aside class="gate-default"><h3>The default is safety, not movement.</h3><p>If a workload cannot name its data authority, backup boundary, public route, resource budget, and recovery path, it does not move to OCI.</p><p><code>Dada = OCI app candidate + durability gate</code></p></aside>
+      </div>
+    </section>
+
+    <section class="section" aria-labelledby="power-title">
+      <div class="section-head">
+        <div><div class="eyebrow">Failure domains</div><h2 id="power-title">Power and network scenarios</h2></div>
+        <p>These are reasoning scenarios, not live promises. Unknown coverage stays explicitly unknown.</p>
+      </div>
+      <div class="panel" style="padding: 18px 20px;">
+        <div class="scenario-bar" role="group" aria-label="failure scenario">
+          <span class="eyebrow" style="margin-right: 4px;">View scenario:</span>
+          <button class="scenario-button" type="button" data-scenario="normal" aria-pressed="true">Normal</button>
+          <button class="scenario-button" type="button" data-scenario="power" aria-pressed="false">Grid outage</button>
+          <button class="scenario-button" type="button" data-scenario="isp" aria-pressed="false">ISP outage</button>
+        </div>
+        <div class="scenario-output" id="scenario-output" aria-live="polite"><strong>Normal operation</strong>Mac mini and Wi-Fi/network equipment are operator-described as battery-backed. The closet laptop is optional. OCI has provider power. Homelab power coverage remains unverified.</div>
+      </div>
+    </section>
+
+    <section class="section" aria-labelledby="inventory-title">
+      <div class="section-head">
+        <div><div class="eyebrow">Observed OCI / 2026-09-14</div><h2 id="inventory-title">What is there now?</h2></div>
+        <p>2 processors, 11 GiB displayed, 193 GB root disk at 57% used, 50 Git checkouts, 27 Docker containers, and one online PM2 process were observed. These are not approvals.</p>
+      </div>
+      <div class="filter-bar" role="group" aria-label="filter OCI inventory">
+        <button class="filter-button" type="button" data-filter="all" aria-pressed="true">All</button>
+        <button class="filter-button" type="button" data-filter="keep" aria-pressed="false">Keep candidate</button>
+        <button class="filter-button" type="button" data-filter="classify" aria-pressed="false">Classify first</button>
+        <button class="filter-button" type="button" data-filter="move" aria-pressed="false">Move candidate</button>
+        <button class="filter-button" type="button" data-filter="retire" aria-pressed="false">Retire / replace</button>
+      </div>
+      <div class="inventory-grid" id="inventory-grid">
+        <article class="inventory-item" data-disposition="keep"><div class="inventory-top"><h3>Dada service</h3><span class="tag keep">keep candidate</span></div><p><span class="tag observed">observed active</span> Local health returned HTTP 200 and <code>status=ok</code>. The public hostname still reports backup mode.</p><p>OCI app is plausible, but the writeable state needs an automated Homelab backup or a proven ephemeral boundary before cutover.</p><div class="evidence">Next: dedicated <a href="https://github.com/Khamel83/dada/issues/7">Dada issue #7</a>.</div></article>
+        <article class="inventory-item" data-disposition="classify"><div class="inventory-top"><h3>Cloudflare ingress</h3><span class="tag classify">classify first</span></div><p><span class="tag observed">observed active</span> Both <code>cloudflared.service</code> and an <code>oci-tunnel</code> container exist.</p><p>Do not assume they are duplicates or the same route. Establish route ownership without exposing configuration values.</p><div class="evidence">Needs: route map, origin, ownership, rollback.</div></article>
+        <article class="inventory-item" data-disposition="classify"><div class="inventory-top"><h3>Gateway2000</h3><span class="tag classify">classify first</span></div><p><span class="tag observed">3 containers active</span> Frontdoor, switchyard, and run proxy are present.</p><p>Potential infrastructure, but callers, resource budget, public exposure, and secret boundary are not established here.</p><div class="evidence">Needs: owner, consumers, route, budget.</div></article>
+        <article class="inventory-item" data-disposition="classify"><div class="inventory-top"><h3>CLI proxy / usage keeper</h3><span class="tag classify">classify first</span></div><p><span class="tag observed">2 containers active</span> CLI proxy and usage keeper are present; usage keeper reported healthy.</p><p>Determine whether this is required always-on infrastructure or a better fit for another node.</p><div class="evidence">Needs: dependency map and data boundary.</div></article>
+        <article class="inventory-item" data-disposition="classify"><div class="inventory-top"><h3>Boys, Buddy, and PM2</h3><span class="tag classify">classify first</span></div><p><span class="tag observed">native services active</span> Boys, Buddy, PM2, and one PM2 process named <code>float</code> are running.</p><p>Application ownership, data, public routes, and recovery paths need explicit records.</p><div class="evidence">Risk: unmanaged workload can consume the small OCI envelope.</div></article>
+        <article class="inventory-item" data-disposition="move"><div class="inventory-top"><h3>GitHub runner fleet</h3><span class="tag move">move candidate</span></div><p><span class="tag observed">runner containers active</span> Runner/background-proxy pairs exist for multiple projects.</p><p>Current Homelab docs place ordinary private CI on Homelab. Verify active jobs and registrations before removal.</p><div class="evidence">Risk: CPU/memory contention during public-service cutover.</div></article>
+        <article class="inventory-item" data-disposition="retire"><div class="inventory-top"><h3>Failed native units</h3><span class="tag retire">retire / repair candidate</span></div><p><span class="tag observed">6 units failed</span> ARB detection, Certbot, cloud-fetcher, nginx, nightly-context, and smart-money-monitor.</p><p>Some failed services still have scheduled timers. No automatic repair, disable, or removal is implied.</p><div class="evidence">Needs: owner decision and safe recovery plan.</div></article>
+        <article class="inventory-item" data-disposition="retire"><div class="inventory-top"><h3>Broad repository sync</h3><span class="tag retire">retire / replace</span></div><p><span class="tag observed">cron every 5 minutes</span> <code>sync-all-repos.sh</code> mutates many OCI worktrees.</p><p>This is the source of the repo-sync alerts and is not a deployment contract.</p><div class="evidence">Replacement: selected deployment repos or immutable artifacts.</div></article>
+      </div>
+      <details>
+        <summary>Show all 50 observed OCI repository checkouts</summary>
+        <ul class="repo-list">
+          <li><code>529</code></li><li><code>Atlas_Mail</code></li><li><code>Janus</code></li><li><code>Notary</code></li><li><code>Podemos</code></li><li><code>WFM</code></li><li><code>agent-os</code></li><li><code>ai-voice-match</code></li><li><code>archon</code></li><li><code>argus</code></li><li><code>atlas-code</code></li><li><code>atlas-coder</code></li><li><code>atlas-voice</code></li><li><code>atlas_researcher</code></li><li><code>boys</code></li><li><code>claw-code-agent</code></li><li><code>clio</code></li><li><code>contextpack</code></li><li><code>dada</code></li><li><code>divorce</code></li><li><code>docs-cache</code></li><li><code>float</code></li><li><code>freeme</code></li><li><code>frugalos</code></li><li><code>gaas</code></li><li><code>gamez</code></li><li><code>gateway2000</code></li><li><code>gmail-bookmark-service</code></li><li><code>homelab</code></li><li><code>ideaz</code></li><li><code>ipeds</code></li><li><code>janitor</code></li><li><code>khamel83.github.io</code></li><li><code>kid-friendly-ai</code></li><li><code>mcp-servers</code></li><li><code>networth</code></li><li><code>oneshot</code></li><li><code>oos</code></li><li><code>openclaw</code></li><li><code>penny</code></li><li><code>poytz</code></li><li><code>ralex</code></li><li><code>relayq</code></li><li><code>tablo</code></li><li><code>trojan-research</code></li><li><code>trojanhorse</code></li><li><code>vdd</code></li><li><code>vig</code></li><li><code>web</code></li><li><code>zeno</code></li>
+        </ul>
+      </details>
+    </section>
+
+    <section class="section" aria-labelledby="next-title">
+      <div class="section-head">
+        <div><div class="eyebrow">Decision queue</div><h2 id="next-title">What happens next</h2></div>
+        <p>The order protects the durable system while reducing OCI noise and management burden.</p>
+      </div>
+      <div class="next">
+        <article class="card"><div class="number">01</div><h3>Dada cutover</h3><p>Prove Homelab backup/restore, reconcile the service unit, map Cloudflare, then test public cutover and rollback.</p></article>
+        <article class="card"><div class="number">02</div><h3>OCI classification</h3><p>Assign each app, gateway, runner, timer, cron job, and checkout an owner and disposition.</p></article>
+        <article class="card"><div class="number">03</div><h3>Replace repo sync</h3><p>Use selected deployment paths. Never let a dirty or diverged worktree become a self-healing target.</p></article>
+        <article class="card"><div class="number">04</div><h3>Commission laptop later</h3><p>Bring it online as optional auxiliary infrastructure only after remote recovery and power/network behavior are proven.</p></article>
+      </div>
+    </section>
+
+    <footer>
+      <a href="#inventory-title">Inventory section</a>
+      <a href="#map-title">Architecture map</a>
+      <a href="#gates-title">Review-amended gates</a>
+      <span>Documentation snapshot; later bounded evidence supersedes it.</span>
+    </footer>
+  </main>
+  <script>
+    (function () {
+      const scenarioText = {
+        normal: ['Normal operation', 'Mac mini and Wi-Fi/network equipment are operator-described as battery-backed. The closet laptop is optional. OCI has provider power. Homelab power coverage remains unverified.'],
+        power: ['Grid outage', 'The laptop may keep itself alive briefly, but local services continue only if the eero/router, network equipment, and required hosts remain powered. The laptop battery alone cannot preserve Plex or the LAN.'],
+        isp: ['ISP outage', 'Public Cloudflare routes may be unreachable. Local LAN access may continue, and already-available private paths can be checked over Tailscale; OCI remains a separate cloud failure domain.']
+      };
+      const scenarioOutput = document.getElementById('scenario-output');
+      document.querySelectorAll('[data-scenario]').forEach(function (button) {
+        button.addEventListener('click', function () {
+          const value = scenarioText[button.dataset.scenario];
+          document.querySelectorAll('[data-scenario]').forEach(function (item) { item.setAttribute('aria-pressed', String(item === button)); });
+          scenarioOutput.innerHTML = '<strong>' + value[0] + '</strong>' + value[1];
+        });
+      });
+
+      const items = Array.from(document.querySelectorAll('.inventory-item'));
+      document.querySelectorAll('[data-filter]').forEach(function (button) {
+        button.addEventListener('click', function () {
+          const filter = button.dataset.filter;
+          document.querySelectorAll('[data-filter]').forEach(function (item) { item.setAttribute('aria-pressed', String(item === button)); });
+          items.forEach(function (item) { item.hidden = filter !== 'all' && item.dataset.disposition !== filter; });
+        });
+      });
+    }());
+  </script>
+</body>
+</html>
